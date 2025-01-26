@@ -2,7 +2,7 @@ import streamlit as st
 import base64
 from error_handling import handle_error
 
-LOGO_PATH = r"C:\Users\Matina\Project_ChatApp\FileWhisperer_logo.png"
+LOGO_PATH = r"FileWhisperer_logo.png"
 
 def get_image_base64(image_path=None):
     """Convert image to base64 string."""
