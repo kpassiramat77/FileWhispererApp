@@ -10,9 +10,9 @@ def handle_document_upload():
     """Handle document upload in the Documents tab."""
     uploaded_files = st.file_uploader(
         "Upload Documents",
-        type=['pdf', 'csv', 'txt', 'docx', 'pptx', 'xlsx'],
+        type=['pdf', 'csv', 'txt', 'docx', 'pptx', 'xlsx', 'mp4', 'avi', 'mov', 'mkv'],
         accept_multiple_files=True,
-        help="Upload one or more documents to start chatting"
+        help="Upload documents or videos to start chatting"
     )
     
     if uploaded_files:
@@ -89,17 +89,24 @@ def combine_documents(doc_keys):
 
 def format_document_name(doc_key):
     """Format document name for display."""
-    if doc_key.startswith("YouTube: 📺"):
-        return doc_key.split("YouTube: ")[1]  # Already has emoji
-    elif doc_key.startswith("Web: 🌐"):
-        return doc_key.split("Web: ")[1]  # Already has emoji
+    # For PDF files
+    if doc_key.endswith('.pdf'):
+        return f"📄 {os.path.basename(doc_key)}"
+    # For YouTube videos
+    elif doc_key.startswith("YouTube:"):
+        title = doc_key.split("YouTube: 📺")[1] if "📺" in doc_key else doc_key.split("YouTube: ")[1]
+        return f"📺 {title}"
+    # For web pages
+    elif doc_key.startswith("Web:"):
+        title = doc_key.split("Web: 🌐")[1] if "🌐" in doc_key else doc_key.split("Web: ")[1]
+        return f"🌐 {title}"
+    # For combined documents
     elif doc_key.startswith("Combined:"):
-        return "📚 " + doc_key.split("Combined: ")[1]
+        return f"📚 {doc_key.split('Combined: ')[1]}"
+    # For other document types
     else:
-        # Determine file type and add appropriate icon
         file_ext = os.path.splitext(doc_key)[1].lower()
         icons = {
-            '.pdf': '📄',
             '.docx': '📝',
             '.doc': '📝',
             '.txt': '📋',
@@ -107,7 +114,8 @@ def format_document_name(doc_key):
             '.xlsx': '📊',
             '.xls': '📊',
             '.pptx': '📎',
-            '.ppt': '📎'
+            '.ppt': '📎',
+            '.pdf': '📄'
         }
         icon = icons.get(file_ext, '📄')
         return f"{icon} {os.path.basename(doc_key)}"
@@ -189,17 +197,35 @@ def main():
     else:
         st.title("Welcome to FileWhisperer 🦉")
         
-        # Create tabs for different input types
-        tab1, tab2, tab3 = st.tabs(["📄 Documents", "🎥 YouTube", "🌐 Website"])
+        # Create tabs with icons
+        tab1, tab2, tab3 = st.tabs(["📄 Documents", "📺 YouTube", "🌐 Website"])
         
         with tab1:
             handle_document_upload()
         
         with tab2:
-            handle_youtube_input()
+            youtube_url = st.text_input(
+                "YouTube URL",
+                placeholder="https://www.youtube.com/watch?v=..."
+            )
+            if youtube_url and youtube_url not in st.session_state.uploaded_docs:
+                if st.button("Process Video"):
+                    with st.spinner("Processing video..."):
+                        if process_document(youtube_url, 'youtube'):
+                            st.success("Video processed successfully!")
+                            st.rerun()
         
         with tab3:
-            handle_website_input()
+            web_url = st.text_input(
+                "Website URL",
+                placeholder="https://..."
+            )
+            if web_url and web_url not in st.session_state.uploaded_docs:
+                if st.button("Process Website"):
+                    with st.spinner("Processing website..."):
+                        if process_document(web_url, 'url'):
+                            st.success("Website processed successfully!")
+                            st.rerun()
 
 if __name__ == "__main__":
     main()
