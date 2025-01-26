@@ -5,6 +5,41 @@ from chat_interface import display_chat_interface, handle_sidebar
 from document_loader import process_document, load_db
 from error_handling import handle_error, validate_file
 from langchain.schema import Document
+from langchain.prompts import PromptTemplate
+
+# Enhanced prompt template with ambiguity handling
+QA_CHAIN_PROMPT = PromptTemplate(
+    template="""You are a helpful AI assistant analyzing {context}.
+    
+    When answering questions:
+    1. If the question is ambiguous, ask for clarification
+    2. If multiple interpretations are possible, list them
+    3. When uncertain, acknowledge the limitations of your understanding
+    4. Provide confidence levels with your responses
+    5. Cite specific sections from the source material
+    
+    Human: {question}
+    Assistant: Let me help you with that...""",
+    input_variables=["context", "question"]
+)
+
+class EnhancedQASystem:
+    def __init__(self):
+        self.confidence_threshold = 0.85
+        self.clarification_needed = False
+        self.multiple_interpretations = []
+        
+    def process_query(self, query, context):
+        # Check for ambiguity
+        if self.needs_clarification(query):
+            return self.request_clarification()
+            
+        # Check for multiple interpretations
+        if self.has_multiple_meanings(query):
+            return self.present_options()
+            
+        # Proceed with high-confidence response
+        return self.generate_response()
 
 def handle_document_upload():
     """Handle document upload in the Documents tab."""
