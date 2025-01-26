@@ -40,3 +40,23 @@ python-magic>=0.4.27
 pytest>=7.4.0
 black>=23.9.0
 flake8>=6.1.0 
+
+#Install all these packages
+streamlit
+langchain
+langchain-community
+langchain-openai
+openai
+faiss-cpu
+python-dotenv
+python-docx
+pypdf
+pandas
+openpyxl
+python-pptx
+unstructured
+youtube-transcript-api
+tiktoken
+nltk
+
+
