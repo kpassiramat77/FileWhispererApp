@@ -10,7 +10,7 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
-from langchain.schema import Document
+from langchain.schema import Document, BaseRetriever
 from youtube_transcript_api import YouTubeTranscriptApi
 import pandas as pd
 import streamlit as st
@@ -21,6 +21,20 @@ from error_handling import handle_error
 import os
 import tempfile
 from openai import OpenAI
+from urllib.parse import urlparse, parse_qs
+import time
+from pytube import YouTube
+from concurrent.futures import ThreadPoolExecutor
+from thefuzz import fuzz
+from thefuzz import process
+import numpy as np
+from typing import List, Any
+from pydantic import Field, BaseModel
+import urllib3
+import certifi
+
+# Disable HTTPS verification warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class DocumentLoaderFactory:
     """Factory for creating document loaders."""
@@ -37,8 +51,43 @@ class DocumentLoaderFactory:
         }
         return loaders[file_type](file_path)
 
+class EnhancedRetriever(BaseRetriever, BaseModel):
+    """Enhanced retriever with fuzzy matching capabilities."""
+    
+    vectorstore: Any = Field(description="Vector store for similarity search")
+    documents: List[Document] = Field(description="List of documents")
+    
+    class Config:
+        arbitrary_types_allowed = True
+    
+    @classmethod
+    def from_components(cls, vectorstore: Any, documents: List[Document]) -> "EnhancedRetriever":
+        """Create an instance from components."""
+        return cls(vectorstore=vectorstore, documents=documents)
+    
+    def get_relevant_documents(self, query: str) -> List[Document]:
+        # Perform fuzzy matching to find similar questions
+        all_texts = [doc.page_content for doc in self.documents]
+        matches = process.extract(query, all_texts, scorer=fuzz.token_sort_ratio)
+        
+        # Get the best match if it's above threshold (80%)
+        best_matches = [match for match in matches if match[1] > 80]
+        
+        if best_matches:
+            # If we found similar questions, use them to enhance the search
+            enhanced_query = best_matches[0][0]
+            st.info(f"📝 Searching for similar context to: '{enhanced_query}'")
+        else:
+            enhanced_query = query
+        
+        # Perform vector similarity search
+        return self.vectorstore.similarity_search(enhanced_query, k=4)
+    
+    async def aget_relevant_documents(self, query: str) -> List[Document]:
+        return self.get_relevant_documents(query)
+
 def load_db(documents: list, chain_type: str = "stuff", k: int = 4):
-    """Create QA chain from documents."""
+    """Create QA chain from documents with enhanced similarity search."""
     try:
         # Get LLM instance from config
         llm = get_llm()
@@ -48,7 +97,16 @@ def load_db(documents: list, chain_type: str = "stuff", k: int = 4):
         
         # Create vector store
         vectorstore = FAISS.from_documents(documents, embeddings)
-        retriever = vectorstore.as_retriever(search_kwargs={"k": k})
+        
+        # Create enhanced retriever using the factory method
+        retriever = EnhancedRetriever.from_components(vectorstore, documents)
+        
+        # Create memory
+        memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            output_key="answer",
+            return_messages=True
+        )
 
         prompt_template = """You are a helpful AI assistant with a 🦉 logo. Answer questions based on the provided context. If the context doesn't contain the answer, use your general knowledge but clearly indicate this.
 
@@ -62,8 +120,12 @@ def load_db(documents: list, chain_type: str = "stuff", k: int = 4):
         2. If the answer is NOT found in the context:
            - Use your general knowledge to answer
            - Start your response with "🦉 Based on my knowledge:"
-        3. Always aim to be helpful and accurate
-        4. If you're unsure, be honest about it
+        3. If the question requires basic analysis or calculations:
+           - Perform the necessary calculations or analysis
+           - Clearly explain the steps and results
+           - Start your response with "🦉 Based on my analysis:"
+        4. Always aim to be helpful and accurate
+        5. If you're unsure, be honest about it
 
         Answer:"""
 
@@ -72,13 +134,7 @@ def load_db(documents: list, chain_type: str = "stuff", k: int = 4):
             template=prompt_template,
         )
 
-        memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            output_key="answer",
-            return_messages=True
-        )
-
-        # Create the chain using the LLM from config
+        # Create the chain using the enhanced retriever
         qa = ConversationalRetrievalChain.from_llm(
             llm=llm,
             retriever=retriever,
@@ -109,6 +165,52 @@ def transcribe_video(video_path):
         handle_error("Error transcribing video", e)
         return None
 
+def get_video_id(url):
+    """Extract video ID from YouTube URL."""
+    try:
+        parsed_url = urlparse(url)
+        if parsed_url.hostname in ('youtu.be', 'www.youtu.be'):
+            return parsed_url.path[1:]
+        if parsed_url.hostname in ('youtube.com', 'www.youtube.com'):
+            return parse_qs(parsed_url.query)['v'][0]
+    except Exception:
+        return None
+    return None
+
+def get_youtube_title(url, retries=3):
+    """Get YouTube video title with retries."""
+    for attempt in range(retries):
+        try:
+            yt = YouTube(url)
+            return yt.title
+        except Exception as e:
+            if attempt == retries - 1:
+                st.warning(f"Could not get video title: {str(e)}")
+                return None
+            time.sleep(1)  # Wait before retrying
+
+def download_youtube_audio(url, retries=3):
+    """Download YouTube audio with retries."""
+    for attempt in range(retries):
+        try:
+            yt = YouTube(url)
+            audio_stream = yt.streams.filter(
+                only_audio=True,
+                file_extension='mp4'
+            ).first()
+            
+            if not audio_stream:
+                raise Exception("No audio stream available")
+                
+            temp_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+            audio_stream.download(filename=temp_audio_path)
+            return temp_audio_path, yt.title
+            
+        except Exception as e:
+            if attempt == retries - 1:
+                raise Exception(f"Failed to download audio after {retries} attempts: {str(e)}")
+            time.sleep(1)  # Wait before retrying
+
 def process_document(file_path: str, file_type: str):
     """Process document with chunking."""
     try:
@@ -118,31 +220,75 @@ def process_document(file_path: str, file_type: str):
             length_function=len,
         )
         
-        # Load and split document
-        if file_type == 'csv':
-            df = pd.read_csv(file_path)
-            text = df.to_string()
-            texts = text_splitter.split_text(text)
-            documents = [Document(page_content=t, metadata={"source": file_path}) for t in texts]
-        elif file_type == 'youtube':
-            video_id = file_path.split('v=')[-1]
-            # Get transcript
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            
-            # Try to get video title, fallback to video ID if not available
+        if file_type == 'youtube':
+            video_id = get_video_id(file_path)
+            if not video_id:
+                st.error("Invalid YouTube URL")
+                return False
+                
             try:
-                response = requests.get(f"https://www.youtube.com/watch?v={video_id}")
-                soup = BeautifulSoup(response.text, 'html.parser')
-                video_title = soup.find('title').text.replace(' - YouTube', '')
-            except:
-                video_title = f"YouTube Video ({video_id})"
-            
-            # Process transcript
-            text = ' '.join([entry['text'] for entry in transcript])
-            texts = text_splitter.split_text(text)
-            
-            source_key = f"YouTube: 📺 {video_title}"
-            documents = [Document(page_content=t, metadata={"source": source_key}) for t in texts]
+                # First try YouTube's built-in transcripts
+                transcript_text = None
+                yt_title = None
+                
+                try:
+                    # Try multiple languages if English isn't available
+                    languages_to_try = ['en', 'en-US', 'en-GB', 'a.en']
+                    transcript = None
+                    
+                    for lang in languages_to_try:
+                        try:
+                            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
+                            break
+                        except Exception:
+                            continue
+                    
+                    if transcript:
+                        transcript_text = ' '.join([entry['text'] for entry in transcript])
+                        yt_title = get_youtube_title(file_path)
+                    else:
+                        raise Exception("No transcript available in any supported language")
+                    
+                except Exception as transcript_error:
+                    st.info("Built-in transcript not available. Attempting to transcribe audio...")
+                    
+                    # Fallback to audio download and transcription
+                    temp_audio_path = None
+                    try:
+                        # Download audio
+                        with st.spinner("Downloading audio..."):
+                            temp_audio_path, yt_title = download_youtube_audio(file_path)
+                            
+                            # Add a small delay to ensure file is written
+                            time.sleep(1)
+                            
+                            # Transcribe using Whisper
+                            with st.spinner("Transcribing audio..."):
+                                transcript_text = transcribe_video(temp_audio_path)
+                                
+                    except Exception as download_error:
+                        raise Exception(f"Audio download/transcription failed: {str(download_error)}")
+                    finally:
+                        # Clean up temporary file
+                        if temp_audio_path and os.path.exists(temp_audio_path):
+                            os.remove(temp_audio_path)
+                
+                if not transcript_text:
+                    st.error("Failed to get transcript from both methods")
+                    return False
+                
+                # Use video title if available, otherwise use ID
+                source_key = f"YouTube: 📺 {yt_title or f'Video {video_id}'}"
+                
+                # Split transcript into chunks
+                texts = text_splitter.split_text(transcript_text)
+                documents = [Document(page_content=t, metadata={"source": source_key}) for t in texts]
+                
+            except Exception as e:
+                st.error(f"Could not process video: {str(e)}")
+                handle_error("Error processing YouTube video", e)
+                return False
+                
         elif file_type in ['mp4', 'avi', 'mov', 'mkv']:
             # Get video name
             video_name = os.path.basename(file_path)
@@ -211,3 +357,4 @@ def process_document(file_path: str, file_type: str):
     except Exception as e:
         handle_error("Error processing document", e)
         return False
+
