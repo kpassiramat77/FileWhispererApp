@@ -22,6 +22,7 @@ pytesseract>=0.3.10
 youtube-transcript-api>=0.6.2
 beautifulsoup4>=4.12.3
 requests>=2.31.0
+pytube>=0.0.0
 
 # Text processing
 nltk>=3.8.1
