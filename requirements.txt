@@ -37,7 +37,7 @@ moviepy==1.0.3
 
 # PDF processing
 pdfplumber==0.10.3
-pdfminer.six==20231228
+pdfminer.six==20221105
 
 # Additional requirements
 numpy==1.24.3
