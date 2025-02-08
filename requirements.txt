@@ -1,49 +1,49 @@
 # Core dependencies
-streamlit==1.32.2
-langchain==0.1.12
-langchain-openai==0.0.8
-langchain-community==0.0.28
-openai==1.14.2
-python-dotenv==1.0.1
-faiss-cpu==1.7.4
-tiktoken==0.6.0
+streamlit>=1.28.0
+langchain>=0.1.0
+langchain-openai>=0.0.2
+langchain-community>=0.0.10
+openai>=1.3.0
+python-dotenv>=1.0.0
+faiss-cpu>=1.7.4
+tiktoken>=0.5.1
 
 # Document processing
-pypdf==4.1.0
-python-docx==1.1.0
-python-pptx==0.6.23
-openpyxl==3.1.2
-pandas<2.0.0
-unstructured==0.12.5
-pdf2image==1.17.0
-pytesseract==0.3.10
+pypdf>=4.1.0
+python-docx>=1.1.0
+python-pptx>=0.6.23
+openpyxl>=3.1.2
+pandas>=2.1.0
+unstructured>=0.12.5
+pdf2image>=1.17.0
+pytesseract>=0.3.10
 
 # Web and media handling
-youtube-transcript-api==0.6.2
-beautifulsoup4==4.12.3
-requests==2.31.0
+youtube-transcript-api>=0.6.2
+beautifulsoup4>=4.12.3
+requests>=2.31.0
 
 # Text processing
-nltk==3.8.1
+nltk>=3.8.1
 
 # Development tools
-python-magic==0.4.27
-pytest==7.4.4
-black==24.2.0
-flake8==7.0.0
+python-magic>=0.4.27
+pytest>=7.4.4
+black>=24.2.0
+flake8>=7.0.0
 
 # Media processing
-moviepy==1.0.3
+moviepy>=1.0.3
 
 # PDF processing
-pdfplumber==0.10.3
-pdfminer.six==20221105
+pdfplumber>=0.10.3
+pdfminer.six>=20221105
 
 # Additional requirements
-numpy==1.24.3
-unstructured-inference==0.7.21
-thefuzz==0.20.0
-python-Levenshtein==0.25.0
-urllib3==2.2.1
-certifi==2024.2.2
-pydantic==2.6.4
+numpy>=1.24.3
+unstructured-inference>=0.7.21
+thefuzz>=0.20.0
+python-Levenshtein>=0.25.0
+urllib3>=2.2.1
+certifi>=2024.2.2
+pydantic>=2.6.4
