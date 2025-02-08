@@ -23,7 +23,12 @@ import tempfile
 from openai import OpenAI
 from urllib.parse import urlparse, parse_qs
 import time
-from pytube import YouTube
+try:
+    from pytube import YouTube
+except ImportError as e:
+    st.error("Pytube is not installed or there is an import error.")
+    handle_error("Import error for Pytube", e)
+#from pytube import YouTube
 from concurrent.futures import ThreadPoolExecutor
 from thefuzz import fuzz
 from thefuzz import process
